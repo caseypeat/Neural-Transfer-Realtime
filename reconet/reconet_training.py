@@ -10,6 +10,8 @@ from tensorflow.train import AdamOptimizer
 from tensorflow.keras.applications.vgg19 import VGG19
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, UpSampling2D
+from tensorflow.keras.optimizers import Adam
+
 
 
 ### LOSS FUNCTIONS
@@ -138,7 +140,7 @@ def init_model(reconet_model, loss_model):
 
 if __name__ == '__main__':
 
-	tf.enable_eager_execution()
+	#tf.enable_eager_execution()
 
 	optimizer = AdamOptimizer(learning_rate=0.001)
 
@@ -157,28 +159,40 @@ if __name__ == '__main__':
 	loss_model = init_loss_model(content_layers, style_layers)
 	model = init_model(reconet_model, loss_model)
 
+	epoch_length = 10
+
+	image_dim = 512
+
 	# Load images
 	style_image = cv2.imread('../style_images/starry_night.jpg').astype(np.float32) / 255
-	style_image_resized = cv2.resize(style_image, (256, 256))
+	style_image_resized = cv2.resize(style_image, (image_dim, image_dim))
+	style_image_batch = np.zeros((epoch_length,image_dim,image_dim,3), dtype=np.float32)
 
-	style_featuremaps = loss_model(np.expand_dims(style_image_resized, axis=0))[len(content_layers):]
+	for i in range(epoch_length):
+		style_image_batch[i] = style_image_resized
+
+	style_featuremaps = loss_model.predict(style_image_batch)[len(content_layers):]
 
 	
 	coco_dirpath = '../../Datasets/coco_unlabeled_2017'
+	filename_list = os.listdir(coco_dirpath)
 
-	for i, filename in enumerate(os.listdir(coco_dirpath)):
+	model.compile(optimizer, loss=content_losses+style_losses, loss_weights=content_weights+style_weights)
 
-		content_image = cv2.imread(os.path.join(coco_dirpath, filename)).astype(np.float32) / 255
-		content_image_resized = cv2.resize(content_image, (256, 256))
-		content_image_expanded = np.expand_dims(content_image_resized, axis=0)
+	for i in range(0, 10000, epoch_length):
 
-		content_featuremaps = loss_model(content_image_expanded)[:len(content_layers)]
+		print('\nIteration: ', i)
 
-		model.compile(optimizer, loss=content_losses+style_losses, loss_weights=content_weights+style_weights)
+		content_image_batch = np.zeros((epoch_length,image_dim,image_dim,3), dtype=np.float32)
 
-		if i % 100 == 0:
-			print('Iteration: ', i)
-			model.fit(x=content_image_expanded, y=content_featuremaps+style_featuremaps, verbose=2)
-			print()
-		else:
-			model.fit(x=content_image_expanded, y=content_featuremaps+style_featuremaps, verbose=0)
+		for i, filename in tqdm(enumerate(filename_list[i:i+epoch_length]), total=epoch_length):
+			content_image = cv2.imread(os.path.join(coco_dirpath, filename)).astype(np.float32) / 255
+			content_image_resized = cv2.resize(content_image, (image_dim, image_dim))
+
+			content_image_batch[i] = content_image_resized
+
+		content_featuremaps = loss_model.predict(content_image_batch)[:len(content_layers)]
+
+		model.fit(x=content_image_batch, y=content_featuremaps+style_featuremaps, batch_size=1)
+
+	reconet_model.save_weights('./models/starry_night_100.h5')
