@@ -12,6 +12,8 @@ from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, UpSampling2D
 from tensorflow.keras.optimizers import Adam
 
+from reconet import init_reconet_model
+
 
 
 ### LOSS FUNCTIONS
@@ -70,49 +72,6 @@ def calc_total_loss(content_featuremaps, style_featuremaps, combination_featurem
 
 
 ### INITIATE MODELS
-def init_reconet_model():
-	"""  """
-
-	# Encoder
-	encoder_model = Sequential()
-	encoder_model.add(Conv2D(filters=48, kernel_size=(9,9), strides=(1,1), padding='same', input_shape=(None,None,3)))
-	encoder_model.add(BatchNormalization(axis=-1))
-	encoder_model.add(ReLU())
-
-	encoder_model.add(Conv2D(filters=96, kernel_size=(3,3), strides=(2,2), padding='same'))
-	encoder_model.add(BatchNormalization(axis=-1))
-	encoder_model.add(ReLU())
-
-	encoder_model.add(Conv2D(filters=192, kernel_size=(3,3), strides=(2,2), padding='same'))
-	encoder_model.add(BatchNormalization(axis=-1))
-	encoder_model.add(ReLU())
-
-	# TODO: add residual blocks
-
-	# Decoder
-	decoder_model = Sequential()
-	decoder_model.add(UpSampling2D(size=(2,2), input_shape=(None,None,192)))
-
-	encoder_model.add(Conv2D(filters=96, kernel_size=(3,3), strides=(1,1), padding='same'))
-	encoder_model.add(BatchNormalization(axis=-1))
-	encoder_model.add(ReLU())
-
-	decoder_model.add(UpSampling2D(size=(2,2)))
-
-	encoder_model.add(Conv2D(filters=48, kernel_size=(3,3), strides=(1,1), padding='same'))
-	encoder_model.add(BatchNormalization(axis=-1))
-	encoder_model.add(ReLU())
-
-	encoder_model.add(Conv2D(filters=3, kernel_size=(9,9), strides=(1,1), padding='same', activation='sigmoid'))
-
-	# ReCoNet
-	reconet_input = Input((None,None,3))
-	reconet_encoder = encoder_model(reconet_input)
-	reconet_decoder = decoder_model(reconet_encoder)
-	reconet_model = Model(inputs=reconet_input, outputs=reconet_decoder)
-
-	return reconet_model
-
 def init_loss_model(content_layers, style_layers):
 	""" Return base model (VGG) with outputs for layers used in loss calculations """
 
@@ -145,14 +104,17 @@ if __name__ == '__main__':
 	optimizer = AdamOptimizer(learning_rate=0.001)
 
 	# Layers for loss calculations
-	content_layers = ['block4_conv2']
-	style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1', 'block5_conv1']
+	content_layers = ['block3_conv3']
+	style_layers = ['block1_conv2', 'block2_conv2', 'block3_conv3', 'block4_conv3']
 
 	content_losses = [calc_content_loss]
-	style_losses = [calc_style_loss, calc_style_loss, calc_style_loss, calc_style_loss, calc_style_loss]
+	style_losses = [calc_style_loss, calc_style_loss, calc_style_loss, calc_style_loss]
 
-	content_weights = [1]
-	style_weights = [100, 100, 100, 100, 100]
+	alpha = 1
+	beta = 10
+
+	content_weights = [alpha]
+	style_weights = [beta, beta, beta, beta]
 
 	# Initiate models
 	reconet_model = init_reconet_model()
@@ -164,7 +126,7 @@ if __name__ == '__main__':
 	image_dim = 512
 
 	# Load images
-	style_image = cv2.imread('../style_images/starry_night.jpg').astype(np.float32) / 255
+	style_image = cv2.imread('../images/style_images/starry_night.jpg').astype(np.float32) / 255
 	style_image_resized = cv2.resize(style_image, (image_dim, image_dim))
 	style_image_batch = np.zeros((epoch_length,image_dim,image_dim,3), dtype=np.float32)
 
@@ -179,7 +141,7 @@ if __name__ == '__main__':
 
 	model.compile(optimizer, loss=content_losses+style_losses, loss_weights=content_weights+style_weights)
 
-	for i in range(0, 10000, epoch_length):
+	for i in range(0, 1000, epoch_length):
 
 		print('\nIteration: ', i)
 
@@ -195,4 +157,4 @@ if __name__ == '__main__':
 
 		model.fit(x=content_image_batch, y=content_featuremaps+style_featuremaps, batch_size=1)
 
-	reconet_model.save_weights('./models/starry_night_100.h5')
+	reconet_model.save_weights('./models/starry_night_10.h5')
