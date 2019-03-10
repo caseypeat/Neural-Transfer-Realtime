@@ -96,7 +96,7 @@ def batch_generator(content_dirpath, content_model, style_featuremaps, image_dim
 
 		for i, filename in enumerate(batch_filenames):
 
-			content_image = cv2.imread(os.path.join(content_dirpath, filename)).astype(np.float32) / 255
+			content_image = cv2.imread(os.path.join(content_dirpath, filename)).astype(np.float32) / 128 - 1
 			content_image_resized = cv2.resize(content_image, (image_dim, image_dim))
 
 			input_batch[i] = content_image_resized
@@ -116,16 +116,17 @@ if __name__ == '__main__':
 	# tf.enable_eager_execution()
 
 	alpha = 1
-	beta = 1e-2
+	beta = 1e-4
 	image_dim = 256
 
-	batch_size = 4
+	batch_size = 1
 	steps_per_epoch = 100
-	epochs = 10
+	epochs = 100
 
-	coco_dirpath = '../../Datasets/coco_unlabeled_2017'
-	save_weights_path = './models/starry_night_1_eb.h5'
+	save_weights_path = './models/starry_night_1_eb_2.h5'
 	style_image_path = '../images/style_images/starry_night.jpg'
+	content_image_path = '../images/content_images/european_building.jpg'
+	style_image_path = content_image_path
 
 
 	optimizer = AdamOptimizer(learning_rate=0.001)
@@ -148,23 +149,25 @@ if __name__ == '__main__':
 	model = init_model(reconet_model, loss_model)
 
 
-	# Load style image and extract featuremaps
+	# Load images and extract featuremaps
 	style_image = cv2.imread(style_image_path).astype(np.float32) / 255
 	style_image_resized = cv2.resize(style_image, (image_dim, image_dim))
 	style_image_batch = np.repeat(np.expand_dims(style_image_resized, axis=0), repeats=batch_size, axis=0)
 
 	style_featuremaps = style_loss_model.predict(style_image_batch)
 
+	content_image = cv2.imread(content_image_path).astype(np.float32) / 255
+	content_image_resized = cv2.resize(content_image, (image_dim, image_dim))
+	content_image_batch = np.repeat(np.expand_dims(content_image_resized, axis=0), repeats=batch_size, axis=0)
 
-	# Generator to train reconet
-	batch_gen = batch_generator(coco_dirpath, content_loss_model, style_featuremaps, image_dim, batch_size)
-	(a, b) = next(batch_gen)
+	content_featuremaps = [content_loss_model.predict(content_image_batch)]
 
 
 	model.compile(optimizer, loss=content_losses+style_losses, loss_weights=content_weights+style_weights)
 
-	model.fit_generator(
-		generator=batch_gen,
+	model.fit(
+		x=content_image_batch,
+		y=content_featuremaps+style_featuremaps,
 		steps_per_epoch=steps_per_epoch,
 		epochs=epochs)
 
