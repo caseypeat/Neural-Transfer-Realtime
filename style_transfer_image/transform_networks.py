@@ -1,12 +1,24 @@
+import tensorflow as tf
+
 from tensorflow.keras.applications.vgg19 import VGG19
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, UpSampling2D, add
+from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, UpSampling2D, add, ZeroPadding2D, Layer
 from tensorflow.keras.optimizers import Adam
 
 from instancenormalization import InstanceNormalization
 
 
-def residual_block(filters, kernel_size):
+class ReflectPadding2D(ZeroPadding2D):
+
+	def __init__(self, padding=(1, 1)):
+		super(ReflectPadding2D, self).__init__()
+		self.padding = ((0,0), padding, padding, (0,0))
+
+	def call(self, x):
+		return tf.pad(x, self.padding, "REFLECT")
+
+
+def residual_block(filters, kernel_size=(3,3)):
 
 	residual_input = Input((None, None, filters))
 	residual_conv1 = Conv2D(filters=filters, kernel_size=kernel_size, strides=(1,1), padding='same')(residual_input)
@@ -18,7 +30,7 @@ def residual_block(filters, kernel_size):
 	return residual_model
 
 
-def init_reconet_model():
+def init_transform_network():
 	"""  """
 
 	# Encoder
@@ -36,19 +48,19 @@ def init_reconet_model():
 	encoder_model.add(ReLU())
 
 	# Residual blocks x4
-	encoder_model.add(residual_block(filters=192, kernel_size=(3,3)))
+	encoder_model.add(residual_block(filters=192))
 	encoder_model.add(InstanceNormalization(axis=-1))
 	encoder_model.add(ReLU())
 
-	encoder_model.add(residual_block(filters=192, kernel_size=(3,3)))
+	encoder_model.add(residual_block(filters=192))
 	encoder_model.add(InstanceNormalization(axis=-1))
 	encoder_model.add(ReLU())
 
-	encoder_model.add(residual_block(filters=192, kernel_size=(3,3)))
+	encoder_model.add(residual_block(filters=192))
 	encoder_model.add(InstanceNormalization(axis=-1))
 	encoder_model.add(ReLU())
 
-	encoder_model.add(residual_block(filters=192, kernel_size=(3,3)))
+	encoder_model.add(residual_block(filters=192))
 	encoder_model.add(InstanceNormalization(axis=-1))
 	encoder_model.add(ReLU())
 
@@ -67,13 +79,20 @@ def init_reconet_model():
 	decoder_model.add(ReLU())
 
 	decoder_model.add(Conv2D(filters=3, kernel_size=(9,9), strides=(1,1), padding='same', activation='sigmoid'))
-
-	# ReCoNet
-	reconet_input = Input((None,None,3))
-	reconet_encoder = encoder_model(reconet_input)
-	reconet_decoder = decoder_model(reconet_encoder)
-	reconet_model = Model(inputs=reconet_input, outputs=reconet_decoder)
-
-	return reconet_model
+	decoder_model.add(ReflectPadding2D(padding=(13,13)))
 
 
+	# Full Model
+	model_input = Input((None,None,3))
+	model_encoder = encoder_model(model_input)
+	model_decoder = decoder_model(model_encoder)
+	model = Model(inputs=model_input, outputs=model_decoder)
+
+	return model
+
+
+if __name__ == '__main__':
+
+	model = init_transform_network()
+
+	print(model.summary())

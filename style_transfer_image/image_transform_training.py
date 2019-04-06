@@ -14,8 +14,9 @@ from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, UpSampling2D
 from tensorflow.keras.optimizers import Adam
 
-from reconet import init_reconet_model
+from transform_networks import init_transform_network
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
 
 ### LOSS FUNCTIONS
@@ -35,7 +36,7 @@ def calc_style_loss(style, combination):
 	combination_gram = gram_matrix(combination)
 
 	mse = tf.reduce_sum(tf.square(style_gram - combination_gram), axis=[-2, -1])
-	normilize_constant = tf.square(tf.reduce_prod(tf.cast(tf.shape(combination), dtype=tf.float32)))
+	normilize_constant = tf.square(tf.reduce_prod(tf.cast(tf.shape(combination)[1:], dtype=tf.float32)))
 
 	loss = tf.divide(mse, normilize_constant)
 
@@ -72,11 +73,11 @@ def init_loss_models(content_layers, style_layers):
 
 	return loss_model, content_loss_model, style_loss_model
 
-def init_model(reconet_model, loss_model):
+def init_model(transform_network, loss_model):
 
 	model_input = Input((None,None,3))
-	model_reconet = reconet_model(model_input)
-	model_loss = loss_model(model_reconet)
+	model_transform = transform_network(model_input)
+	model_loss = loss_model(model_transform)
 
 	model = Model(inputs=model_input, outputs=model_loss)
 
@@ -113,40 +114,39 @@ def batch_generator(content_dirpath, content_model, style_featuremaps, image_dim
 
 if __name__ == '__main__':
 
-	# tf.enable_eager_execution()
+	tf.enable_eager_execution()
 
 	alpha = 1
-	beta = 1e-2
+	beta = 1
 	image_dim = 256
 
-	batch_size = 4
+	batch_size = 16
 	steps_per_epoch = 100
 	epochs = 10
 
 	coco_dirpath = '../../Datasets/coco_unlabeled_2017'
-	save_weights_path = './models/starry_night_1_eb.h5'
-	style_image_path = '../images/style_images/starry_night.jpg'
+	save_weights_path = './models/a_muse_1_256_3.h5'
+	style_image_path = '../images/style_images/a_muse.jpg'
 
 
 	optimizer = AdamOptimizer(learning_rate=0.001)
 
 
 	# Layers for loss calculations
-	content_layers = ['block4_conv2']
-	style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1', 'block5_conv1']
+	content_layers = ['block3_conv3']
+	style_layers = ['block1_conv2', 'block2_conv2', 'block3_conv3', 'block4_conv3']
 
 	content_losses = [calc_content_loss]
-	style_losses = [calc_style_loss, calc_style_loss, calc_style_loss, calc_style_loss, calc_style_loss]
+	style_losses = [calc_style_loss, calc_style_loss, calc_style_loss, calc_style_loss]
 
 	content_weights = [alpha]
-	style_weights = [beta, beta, beta, beta, beta]
+	style_weights = [beta, beta, beta, beta]
 
 
 	# Initiate models
-	reconet_model = init_reconet_model()
+	transform_network = init_transform_network()
 	loss_model, content_loss_model, style_loss_model = init_loss_models(content_layers, style_layers)
-	model = init_model(reconet_model, loss_model)
-
+	model = init_model(transform_network, loss_model)
 
 	# Load style image and extract featuremaps
 	style_image = cv2.imread(style_image_path).astype(np.float32) / 255
@@ -168,4 +168,4 @@ if __name__ == '__main__':
 		steps_per_epoch=steps_per_epoch,
 		epochs=epochs)
 
-	reconet_model.save_weights(save_weights_path)
+	transform_network.save_weights(save_weights_path)
