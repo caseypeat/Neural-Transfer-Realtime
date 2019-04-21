@@ -2,20 +2,10 @@ import tensorflow as tf
 
 from tensorflow.keras.applications.vgg19 import VGG19
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, UpSampling2D, add, ZeroPadding2D, Layer
+from tensorflow.keras.layers import Input, Conv2D, ReLU, UpSampling2D, add
 from tensorflow.keras.optimizers import Adam
 
 from instancenormalization import InstanceNormalization
-
-
-class ReflectPadding2D(ZeroPadding2D):
-
-	def __init__(self, padding=(1, 1)):
-		super(ReflectPadding2D, self).__init__()
-		self.padding = ((0,0), padding, padding, (0,0))
-
-	def call(self, x):
-		return tf.pad(x, self.padding, "REFLECT")
 
 
 def residual_block(filters, kernel_size=(3,3)):
@@ -30,8 +20,8 @@ def residual_block(filters, kernel_size=(3,3)):
 	return residual_model
 
 
-def init_transform_network():
-	"""  """
+def init_transform_model():
+	""" Model architecture to deconstruct input image, then reconstruct an output image """
 
 	# Encoder
 	encoder_model = Sequential()
@@ -79,7 +69,6 @@ def init_transform_network():
 	decoder_model.add(ReLU())
 
 	decoder_model.add(Conv2D(filters=3, kernel_size=(9,9), strides=(1,1), padding='same', activation='sigmoid'))
-	decoder_model.add(ReflectPadding2D(padding=(13,13)))
 
 
 	# Full Model
@@ -91,8 +80,40 @@ def init_transform_network():
 	return model
 
 
+def init_loss_models(content_layers, style_layers):
+	""" Return base model (VGG) with outputs for layers used in loss calculations """
+
+	base_model = VGG19(include_top=False, weights='imagenet')
+
+	outputs = [base_model.get_layer(output_layer).output for output_layer in content_layers+style_layers]
+	content_outputs = [base_model.get_layer(output_layer).output for output_layer in content_layers]
+	style_outputs = [base_model.get_layer(output_layer).output for output_layer in style_layers]
+
+	loss_model = Model(inputs=base_model.inputs, outputs=outputs)
+	content_loss_model = Model(inputs=base_model.inputs, outputs=content_outputs)
+	style_loss_model = Model(inputs=base_model.inputs, outputs=style_outputs)
+
+	loss_model.trainable = False
+	content_loss_model.trainable = False
+	style_loss_model.trainable = False
+
+	return loss_model, content_loss_model, style_loss_model
+
+
+def init_model(transform_model, loss_model):
+	""" Append tranformation and loss models"""
+
+	model_input = Input((None,None,3))
+	model_transform = transform_model(model_input)
+	model_loss = loss_model(model_transform)
+
+	model = Model(inputs=model_input, outputs=model_loss)
+
+	return model
+
+
 if __name__ == '__main__':
 
-	model = init_transform_network()
+	model = init_transform_model()
 
 	print(model.summary())
